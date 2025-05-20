@@ -92,7 +92,9 @@ export default function ProfileDetailScreen() {
 			{
 				text: "Yes",
 				onPress: async () => {
-					await SecureStore.clear();
+					await SecureStore.deleteItemAsync("user");
+					await SecureStore.deleteItemAsync("gender");
+					await SecureStore.deleteItemAsync("linkedBankAccount");
 					router.replace("/loginscreen");
 				},
 			},
@@ -116,7 +118,9 @@ export default function ProfileDetailScreen() {
 	};
 
 	const confirmDeleteAccount = async () => {
-		await SecureStore.clear();
+		await SecureStore.deleteItemAsync("user");
+		await SecureStore.deleteItemAsync("gender");
+		await SecureStore.deleteItemAsync("linkedBankAccount");
 		router.replace("/loginscreen");
 	};
 
