@@ -37,6 +37,7 @@ export default function ProfileScreen() {
 	const [name, setName] = useState<string | null>(null);
 	const [email, setEmail] = useState<string | null>(null);
 	const [userId, setUserId] = useState<string | null>(null);
+	const [notifiedAccounts, setNotifiedAccounts] = useState<Set<string>>(new Set());
 
 	useEffect(() => {
 		const loadUserData = async () => {
@@ -53,6 +54,20 @@ export default function ProfileScreen() {
 		};
 
 		loadUserData();
+	}, []);
+
+	useEffect(() => {
+		const loadNotifiedAccounts = async () => {
+			try {
+				const stored = await AsyncStorage.getItem('notifiedAccounts');
+				if (stored) {
+					setNotifiedAccounts(new Set(JSON.parse(stored)));
+				}
+			} catch (error) {
+				console.error('Error loading notified accounts:', error);
+			}
+		};
+		loadNotifiedAccounts();
 	}, []);
 
 	useFocusEffect(
@@ -72,17 +87,32 @@ export default function ProfileScreen() {
 					const data = await response.json();
 
 					if (response.ok && Array.isArray(data) && data.length > 0) {
-						const existing = JSON.stringify(bankAccounts);
-						const incoming = JSON.stringify(data);
-
-						// Detect newly linked
-						if (existing !== incoming && bankAccounts.length < data.length) {
-							// New account linked!
-							triggerNewAccountNotification(data[data.length - 1]); // send latest
+						// Get current bank account IDs
+						const currentAccountIds = new Set(data.map(account => account._id));
+						
+						// Load notified accounts from AsyncStorage
+						const storedNotified = await AsyncStorage.getItem('notifiedAccounts');
+						const notifiedSet = storedNotified ? new Set(JSON.parse(storedNotified)) : new Set();
+						
+						// Find truly new accounts (not in notified set)
+						const newAccounts = data.filter(account => !notifiedSet.has(account._id));
+						
+						if (newAccounts.length > 0) {
+							// Only trigger notification for the newest account
+							await triggerNewAccountNotification(newAccounts[newAccounts.length - 1]);
+							
+							// Update notified accounts with new account IDs
+							const updatedNotified = new Set([...notifiedSet, ...newAccounts.map(acc => acc._id)]);
+							
+							// Save to AsyncStorage
+							await AsyncStorage.setItem('notifiedAccounts', JSON.stringify([...updatedNotified]));
+							
+							// Update state
+							setNotifiedAccounts(updatedNotified);
 						}
 
-						setLinkedAccount(data[0]); // Optional: for highlighting
-						setBankAccounts(data); // ✅ Show all in UI
+						setLinkedAccount(data[0]);
+						setBankAccounts(data);
 					} else {
 						setLinkedAccount(null);
 						setBankAccounts([]);
@@ -95,7 +125,7 @@ export default function ProfileScreen() {
 			};
 
 			fetchLinkedAccount();
-		}, [])
+		}, []) // Remove notifiedAccounts from dependencies to prevent re-runs
 	);
 
 	const triggerNewAccountNotification = async (account: any) => {
@@ -236,10 +266,12 @@ export default function ProfileScreen() {
 		const permissionGranted = await requestStoragePermission();
 		if (!permissionGranted) return;
 
-		// External storage location for Android (e.g., Downloads folder)
-		const destinationPath = FileSystem.documentDirectory + `downloads/${filename}`;
-
 		try {
+			// For Android, use the Downloads directory
+			const destinationPath = Platform.OS === 'android' 
+				? `${FileSystem.documentDirectory}../Download/${filename}`
+				: `${FileSystem.documentDirectory}${filename}`;
+
 			await FileSystem.copyAsync({ from: uri, to: destinationPath });
 			console.log("✅ File saved successfully:", destinationPath);
 			return destinationPath;
